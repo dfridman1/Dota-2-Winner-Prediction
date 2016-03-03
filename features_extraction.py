@@ -172,7 +172,7 @@ def features_label(df):
 
 
 def remove_redundant(df):
-    features_to_remove = ['match_id', 'start_time']
+    features_to_remove = ['start_time']
     return remove_features(df, features_to_remove)
 
 

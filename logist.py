@@ -9,14 +9,11 @@ from utils import timedcall, cross_validate, split_validate
 
 
 print 'reading train data...'
-df   = pd.read_csv('data/train.csv')
+df   = pd.read_csv('data/train.csv', index_col = 'match_id')
 X, y = features_matrix(df), target_vector(df)
 
 print 'reading test data...'
-df_test  = pd.read_csv('data/test.csv')
-ids      = df_test.match_id
-features = filter(lambda col: col != 'match_id', df_test.columns)
-X_test   = df_test[features]
+X_test  = pd.read_csv('data/test.csv', index_col = 'match_id')
 
 
 
