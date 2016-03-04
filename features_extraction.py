@@ -190,27 +190,18 @@ def preprocess(df, train = True):
                      team_abilities_difference]
 
     s = 'train' if train else 'test'
-    preprocessors = [add_abilities_features('data/abilities_%s.csv' % s),
-                     add_items_features('data/items_%s.csv' % s)] + preprocessors
+    filenames = map(lambda name: 'data/' + (name % s) + '.csv', ['abilities_%s', 'items_%s', 'observers_%s'])
+
+    additional_features = map(add_features_merge, filenames)
     
-    return features_pipeline(df, preprocessors)
+    return features_pipeline(df, additional_features + preprocessors)
 
 
 
 
-def add_abilities_features(filename):
-    abilities = pd.read_csv(filename)
-    def add(df):
-        return df.merge(abilities, on = 'match_id')
-    return add
-
-
-
-def add_items_features(filename):
-    items = pd.read_csv(filename)
-    def add(df):
-        return df.merge(items, on = 'match_id')
-    return add
+def add_features_merge(filename):
+    features = pd.read_csv(filename)
+    return lambda df: df.merge(features, on = 'match_id')
 
 
 
@@ -275,6 +266,8 @@ def write_train_test_dataframes(train_input,
     X, y, X_test = extract_all(df, df_test)
     
     X[target_name()] = y
+
+    X['match_id']      = df.match_id
     X_test['match_id'] = df_test.match_id
     
     X.to_csv(train_output, index = False)

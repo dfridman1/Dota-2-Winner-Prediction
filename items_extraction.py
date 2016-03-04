@@ -60,10 +60,9 @@ def write_items_dataframe(source, destination):
 
 
 if __name__ == '__main__':
-#     reply = raw_input('Are you sure you want to create items dataframe (It\'s going to take a while)? Type Yes or No? ')
-#     if is_affirmative(reply):
-#         write_items_dataframe('data/matches.jsonlines.bz2',
-#                               'data/items_train.csv')
-#         write_items_dataframe('data/matches_test.jsonlines.bz2',
-#                               'data/items_test.csv')
-    print json_to_items_dataframe(path)
+    reply = raw_input('Are you sure you want to create items dataframe (It\'s going to take a while)? Type Yes or No? ')
+    if is_affirmative(reply):
+        write_items_dataframe('data/matches.jsonlines.bz2',
+                              'data/items_train.csv')
+        write_items_dataframe('data/matches_test.jsonlines.bz2',
+                              'data/items_test.csv')
