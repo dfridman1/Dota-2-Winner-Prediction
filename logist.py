@@ -61,7 +61,7 @@ radiant_win = np.array(map(lambda x: x[1], predictions))
 if __name__ == '__main__':
     path = raw_input('Where do you want to write the file to? Enter a relative path.\n')
     outcome = pd.DataFrame()
-    outcome['match_id'] = ids
+    outcome['match_id'] = X_test.index
     outcome['radiant_win'] = radiant_win
 
     outcome.to_csv(path, index = False)
