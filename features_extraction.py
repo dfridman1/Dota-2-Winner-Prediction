@@ -1,7 +1,8 @@
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
 import re
+from calc_rating import add_synergy_antisynergy
 
 
 
@@ -39,7 +40,7 @@ def remove_feature(df, feature_name):
 
 
 def remove_features(df, feature_names):
-    return reduce(remove_feature, feature_names, df)
+    return df.drop(feature_names, axis = 1, inplace = False)
 
 
 
@@ -148,6 +149,19 @@ def fill_nan_with(df, value = 0):
 
 
 
+def remove_all_zero(df, prefix):
+    '''Given a dataframe df and a prefix, returns a function that removes
+    all columns that start with 'prefix' and  whose sum of absolute values
+    is equal to zero.'''
+
+    columns = filter(lambda col: col.startswith(prefix), df.columns)
+    features_sum_abs = np.sum(df[columns].apply(abs))
+
+    zero_features = features_sum_abs[features_sum_abs == 0].index
+
+    return lambda df_: df_.drop(zero_features, axis = 1, inplace = False)
+
+
 
 def target_name():
     return 'radiant_win'
@@ -179,18 +193,26 @@ def remove_redundant(df):
 
 
 def preprocess(df, train = True):
-    preprocessors = [remove_future_features,
-                     remove_redundant,
-                     features_matrix,
+    preprocessors = [remove_redundant,
                      fill_nan_with,
                      add_heros_bag,
                      add_lobby_bag,
                      remove_categorical,
+                     add_multiples,
+                     add_divisions,
+                     add_team_means,
+                     add_team_medians,
                      team_items_difference,
                      team_abilities_difference]
 
+    if train:
+        preprocessors = [remove_future_features] + preprocessors
+
     s = 'train' if train else 'test'
-    filenames = map(lambda name: 'data/' + (name % s) + '.csv', ['abilities_%s', 'items_%s', 'observers_%s'])
+    filenames = map(lambda name: 'data/' + (name % s) + '.csv', ['abilities_%s',
+                                                                 'items_%s',
+                                                                 'observers_%s',
+                                                                 'speed_%s'])
 
     additional_features = map(add_features_merge, filenames)
     
@@ -235,18 +257,92 @@ def team_abilities_difference(df):
 
 
 
-def extract_all(df, df_test):
+def team_feature_names(df):
+    '''Returns feature names, for which team 'average' can ba calculated.'''
+    regex = re.compile('(?:r|l)[0-9]_(.*)')
+    res = []
+    for col in df.columns:
+        m = regex.match(col)
+        if m is not None:
+            res.append(m.group(1))
+    return set(res)
+
+
+
+def add_team_features(df, f, statistic_name):
+    df_ = df.copy()
+    names = team_feature_names(df)
+    for name in names:
+        for team in 'rd':
+            extract = df_[['%s%d_%s' % (team, i, name) for i in xrange(1, 6)]]
+            df_['%s_%s_%s' % (team, name, statistic_name)] = extract.apply(f, axis = 1)
+    return df_
+
+
+
+def combine_two_features(feature1, feature2, f):
+    return f(feature1, feature2)
+
+
+def add_playerwise_combined_features(df, f, f_name):
+    df_ = df.copy()
+    names = list(team_feature_names(df_))
+    print names
+    print 'number of team columns = %d' % len(names)
+    for i in 'rd':
+        for j in xrange(1, 6):
+            for k in xrange(1, len(names)):
+                for m in xrange(k):
+                    name1, name2 = names[m], names[k]
+                    pre = '%s%d' % (i, j)
+                    col1, col2 = df_['%s_%s' % (pre, name1)], df_['%s_%s' % (pre, name2)]
+                    newcol = combine_two_features(col1, col2, f)
+                    df_['%s_%s_%s_%s' % (name1, f_name, name2, pre)] = newcol
+    return df_
+
+
+
+def add_multiples(df):
+    f = lambda x, y: (x + 1) * (y + 1)
+    return add_playerwise_combined_features(df, f, 'mult')
+
+
+def add_divisions(df):
+    f = lambda x, y: (x + 1) / (y + 1)
+    return add_playerwise_combined_features(df, f, 'div')
+
+
+
+def add_team_means(df):
+    return add_team_features(df, np.mean, 'mean')
+
+
+
+def add_team_medians(df):
+    return add_team_features(df, np.median, 'median')
+
+
+
+def extract_all(df, df_test, minmax = False):
     '''Preprocesses df and df_test and returns X, y, X_test.'''
 
     y = target_vector(df)
     
     X      = preprocess(df, train = True)
     X_test = preprocess(df_test, train = False)
+
+    zero_abilities_remover = remove_all_zero(X, 'ability_')
+    zero_items_remover     = remove_all_zero(X, 'item_')
+
+    X      = zero_abilities_remover(zero_items_remover(X))
+    X_test = zero_abilities_remover(zero_items_remover(X_test))
     
     xnames     = X.columns
     xtestnames = X_test.columns
+
+    scaler = MinMaxScaler() if minmax else StandardScaler()
     
-    X, transforms = transform_pipeline(X, [StandardScaler()], fit = True)
+    X, transforms = transform_pipeline(X, [scaler], fit = True)
     X_test, _     = transform_pipeline(X_test, transforms)
     
     X      = pd.DataFrame(X, columns = xnames)
@@ -263,7 +359,7 @@ def write_train_test_dataframes(train_input,
     df      = pd.read_csv(train_input)
     df_test = pd.read_csv(test_input)
     
-    X, y, X_test = extract_all(df, df_test)
+    X, y, X_test = extract_all(df, df_test, minmax = True)
     
     X[target_name()] = y
 
