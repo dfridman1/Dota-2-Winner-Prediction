@@ -1,10 +1,10 @@
-from time import clock
 import numpy as np
+from sklearn.linear_model import LogisticRegression
 from sklearn.grid_search import GridSearchCV
-from sklearn.cross_validation import KFold, train_test_split
-
-
-
+from sklearn.cross_validation import KFold
+import matplotlib.pyplot as plt
+from time import clock
+import random
 
 
 def timedcall(f):
@@ -16,77 +16,89 @@ def timedcall(f):
     return g
 
 
+def create_Cs(lo, hi, q=10):
+    ans = []
+    curr = lo
+    while curr <= hi:
+        ans.append(curr)
+        curr *= q
+    return ans
 
 
-def concatMap(f, xs):
-    res = []
-    for x in xs:
-        ys = f(x)
-        for y in ys:
-            res.append(y)
-    return res
+def split(df, config):
+    features = [col for col in df if col != config.target_name]
+    return df[features], np.array(df[config.target_name])
 
 
+def make_cv(y, config):
+    return KFold(len(y),
+                 n_folds=config.n_folds,
+                 random_state=config.random_state,
+                 shuffle=config.cv_shuffle)
 
 
-def sample(df, size, random_state = 241):
-    indices = np.arange(0, df.shape[0])
-    np.random.seed(random_state)
-    selected = sorted(np.random.choice(indices,
-                                       size = size,
-                                       replace = False))
-    np.random.seed()
-    df = df.loc[selected, : ]
-    df.index = np.arange(df.shape[0])
-    return df
-
-
-
-
-def cross_validate(clf, params, X, y, scoring, random_state = 241, cv = None):
-    params = params or {}
-    cv = cv or KFold(len(y),
-                     n_folds = 5,
-                     shuffle = True,
-                     random_state = random_state)
-    gs = GridSearchCV(clf,
-                      param_grid = params,
-                      scoring = scoring,
-                      cv = cv)
+@timedcall
+def cross_validate_logistic(X, y, config, cv=None):
+    params = {'C': config.Cs}
+    cv = cv or make_cv(y, config)
+    gs = GridSearchCV(LogisticRegression(),
+                      param_grid=params,
+                      scoring=config.scoring,
+                      cv=cv)
     gs.fit(X, y)
     return gs
 
 
+@timedcall
+def validate_logistic(X, y, config):
+    cv = cv_generator(len(y), config)
+    return cross_validate_logistic(X, y, config, cv)
 
 
-def create_validation_split_generator(size, validation_size = 0.4, random_state = 241):
-    indices, mask = np.arange(size), np.zeros(size, dtype = bool)
-    np.random.seed(random_state)
-    validation = np.random.choice(indices,
-                                  size = int(validation_size * size),
-                                  replace = False)
-    for x in validation:
-        mask[x] = True
-
-    train = []
-    for i, x in enumerate(mask):
-        if not x:
-            train.append(i)
-    
-    np.random.seed()
-    return [(np.array(train), validation)]
+def sample(xs, k, random_state=None):
+    if random_state is not None:
+        random.seed(random_state)
+    s = random.sample(xs, k)
+    random.seed()
+    return s
 
 
+def cv_generator(size, config):
+    mask = [False] * size
+    k = int(size * config.train_size)
+    train = sorted(sample(xrange(size), k, config.random_state))
+    for num in train:
+        mask[num] = True
+    test = []
+    for num, taken in enumerate(mask):
+        if not taken:
+            test.append(num)
+    return [(np.array(train), np.array(test))]
 
-def split_validate(clf, params, X, y, validation_size, scoring, random_state = 241):
-    size = X.shape[0]
-    cv_generator = create_validation_split_generator(size,
-                                                     validation_size,
-                                                     random_state)
-    return cross_validate(clf,
-                          params,
-                          X,
-                          y,
-                          scoring,
-                          random_state,
-                          cv_generator)
+
+@timedcall
+def learning_curve(X, y, config):
+    X, y = np.array(X), np.array(y)
+    m, n = X.shape
+    train_sizes = [int(m * i) for i in config.train_sizes]
+    train_scores, test_scores = [], []
+    for size in train_sizes:
+        indices = sorted(sample(xrange(m), size, config.random_state))
+        X_new, y_new = X[indices, :], y[indices]
+        gs = config.validate(X_new, y_new, config)
+        test_scores.append(gs.best_score_)
+        y_pred = gs.predict_proba(X_new)
+        y_pred = map(lambda x: x[1], y_pred)
+        train_scores.append(config.scoring_fn(y_new, y_pred))
+    return train_sizes, train_scores, test_scores
+
+
+def plot_learning_curve(lc):
+    sizes, train, val = lc
+    plt.figure()
+    plt.plot(sizes, train, label='training set')
+    plt.plot(sizes, val, label='validation set')
+    plt.xlabel('number of training examples')
+    plt.ylabel('roc auc score')
+    plt.legend()
+    plt.show()
