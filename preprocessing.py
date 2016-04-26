@@ -13,8 +13,6 @@ class Preprocessor(object):
         self.x_train = None
         self.y_train = None
         self.x_test = None
-        self.synergy = None
-        self.antisynergy = None
 
     def fit_transform(self, X):
         self.y_train = X[self.config.target_name]
@@ -61,8 +59,6 @@ class Preprocessor(object):
                                'first_blood_player1',
                                'first_blood_player2']
         X = X.drop(redundant_features, axis=1)
-
-        self._add_synergy(X)
 
         for team in 'rd':
             for p in xrange(1, 6):
